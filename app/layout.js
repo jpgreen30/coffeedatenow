@@ -1,0 +1,1 @@
+export const metadata={title:"CoffeeDateNow — Less texting. More meeting.",description:"Meet someone for coffee today. Simple, local, real."};export default function RootLayout({children}){return <html lang="en"><body>{children}</body></html>}
