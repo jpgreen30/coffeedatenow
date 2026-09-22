@@ -1,0 +1,559 @@
+{
+  "$schema": "https://developers.openai.com/plugins/schemas/chatgpt-app-submission.v1.json",
+  "schema_version": 1,
+  "app_info": {
+    "display_name": "CoffeeDateNow",
+    "subtitle": "Meet for coffee right now",
+    "description": "CoffeeDateNow is an 18+ real-time meetup app that shows you adults nearby who are free for coffee right now. No endless swiping — just say yes, get matched, and pick a public café. Powered by an MCP server, ChatGPT can help users find available matches, suggest nearby cafés, and facilitate spontaneous in-person coffee dates.",
+    "category": "LIFESTYLE",
+    "website_url": "https://coffeedatenow.com",
+    "privacy_policy_url": "https://coffeedatenow.com/privacy",
+    "terms_of_service_url": "https://coffeedatenow.com/terms",
+    "support_url": "https://coffeedatenow.com/support",
+    "contact_email": "support@coffeedatenow.com",
+    "age_restriction": "adults_only",
+    "is_health_related": false,
+    "brand_color": "#D4611B",
+    "brand_color_dark": "#A84D14"
+  },
+  "auth": {
+    "registration_method": "dynamic_client_registration",
+    "registration_url": "https://ydqhjabuvyjjqkbddezy.supabase.co/auth/v1/oauth/clients/register",
+    "auth_url": "https://ydqhjabuvyjjqkbddezy.supabase.co/auth/v1/oauth/authorize",
+    "token_url": "https://ydqhjabuvyjjqkbddezy.supabase.co/auth/v1/oauth/token",
+    "authorization_server_base": "https://ydqhjabuvyjjqkbddezy.supabase.co/auth/v1",
+    "resource": "https://coffeedatenow.com/mcp",
+    "scopes": ["openid", "profile", "email"],
+    "pkce_methods": ["S256"],
+    "allow_http_redirect": false
+  },
+  "mcp": {
+    "server_url": "https://coffeedatenow.com/mcp"
+  },
+  "tools": {
+    "get_my_profile": {
+      "description": "Retrieve the authenticated user's own dating profile including display name, bio, age, location, and availability status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "display_name": { "type": "string" },
+          "bio": { "type": "string" },
+          "age": { "type": "integer" },
+          "location": { "type": "string" },
+          "is_available": { "type": "boolean" },
+          "available_until": { "type": "string", "format": "date-time" }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "justifications": {
+        "readOnlyHint": "Only reads profile data; makes no modifications.",
+        "openWorldHint": "Returns only the authenticated user's own profile from CoffeeDateNow — no open-web access.",
+        "destructiveHint": "Fetching a profile is non-destructive.",
+        "idempotentHint": "Repeated calls return the same current profile."
+      }
+    },
+    "set_coffee_availability": {
+      "description": "Mark the authenticated user as available or unavailable for coffee right now, optionally setting an expiry time.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "available": { "type": "boolean", "description": "true to go available, false to go offline." },
+          "available_for_minutes": { "type": "integer", "description": "How many minutes to stay available. Defaults to 60.", "minimum": 5, "maximum": 240 }
+        },
+        "required": ["available"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "is_available": { "type": "boolean" },
+          "available_until": { "type": "string", "format": "date-time" }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "justifications": {
+        "readOnlyHint": "Writes the user's availability status.",
+        "openWorldHint": "Updates only the user's own availability record — no open-web side effects.",
+        "destructiveHint": "Toggling availability is reversible; no data is deleted.",
+        "idempotentHint": "Repeated calls with the same value may update timestamps, so not strictly idempotent."
+      }
+    },
+    "discover_coffee_dates": {
+      "description": "List other available adults near the authenticated user who are also free for coffee right now.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "radius_km": { "type": "number", "description": "Search radius in kilometres. Default 5.", "minimum": 1, "maximum": 50 },
+          "limit": { "type": "integer", "description": "Maximum results to return. Default 20.", "minimum": 1, "maximum": 100 }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "matches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "profile_id": { "type": "string" },
+                "display_name": { "type": "string" },
+                "distance_km": { "type": "number" },
+                "bio_snippet": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "justifications": {
+        "readOnlyHint": "Reads available profiles; makes no state changes.",
+        "openWorldHint": "Returns data only from the CoffeeDateNow platform.",
+        "destructiveHint": "Discovery is non-destructive.",
+        "idempotentHint": "Repeated queries with the same parameters return the same result set at that moment."
+      }
+    },
+    "like_or_pass_profile": {
+      "description": "Express interest (like) or decline (pass) another user's profile. A mutual like creates a match.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile_id": { "type": "string", "description": "The ID of the profile to like or pass." },
+          "action": { "type": "string", "enum": ["like", "pass"], "description": "like to express interest, pass to decline." }
+        },
+        "required": ["profile_id", "action"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "matched": { "type": "boolean" },
+          "match_id": { "type": "string" }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "justifications": {
+        "readOnlyHint": "Records the user's like or pass decision.",
+        "openWorldHint": "Interacts only within the CoffeeDateNow platform.",
+        "destructiveHint": "A like or pass can be undone; no data is permanently deleted.",
+        "idempotentHint": "Repeating the call may change the outcome (e.g., toggle) so not idempotent."
+      }
+    },
+    "list_matches": {
+      "description": "Retrieve the list of mutual matches for the authenticated user.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": { "type": "integer", "description": "Maximum matches to return. Default 20.", "minimum": 1, "maximum": 100 },
+          "offset": { "type": "integer", "description": "Pagination offset.", "minimum": 0 }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "matches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "match_id": { "type": "string" },
+                "matched_at": { "type": "string", "format": "date-time" },
+                "other_user": {
+                  "type": "object",
+                  "properties": {
+                    "profile_id": { "type": "string" },
+                    "display_name": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "justifications": {
+        "readOnlyHint": "Lists existing matches without modifying any data.",
+        "openWorldHint": "Returns data only from CoffeeDateNow.",
+        "destructiveHint": "Listing matches is non-destructive.",
+        "idempotentHint": "Repeated calls return the same current match list."
+      }
+    },
+    "list_messages": {
+      "description": "Retrieve the message thread between the authenticated user and a specific match.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "match_id": { "type": "string", "description": "The match conversation to retrieve." },
+          "limit": { "type": "integer", "description": "Maximum messages to return. Default 50.", "minimum": 1, "maximum": 200 }
+        },
+        "required": ["match_id"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "message_id": { "type": "string" },
+                "sender_id": { "type": "string" },
+                "body": { "type": "string" },
+                "sent_at": { "type": "string", "format": "date-time" }
+              }
+            }
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "justifications": {
+        "readOnlyHint": "Reads conversation history only.",
+        "openWorldHint": "Returns data from CoffeeDateNow only.",
+        "destructiveHint": "Reading messages is non-destructive.",
+        "idempotentHint": "Repeated calls return the same historical messages."
+      }
+    },
+    "list_public_venues": {
+      "description": "List publicly available coffee venues near a given location for meeting suggestions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "latitude": { "type": "number", "description": "Latitude of the search centre." },
+          "longitude": { "type": "number", "description": "Longitude of the search centre." },
+          "radius_km": { "type": "number", "description": "Search radius in kilometres. Default 2.", "minimum": 0.5, "maximum": 20 },
+          "limit": { "type": "integer", "description": "Maximum venues to return. Default 10.", "minimum": 1, "maximum": 50 }
+        },
+        "required": ["latitude", "longitude"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "venues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "venue_id": { "type": "string" },
+                "name": { "type": "string" },
+                "address": { "type": "string" },
+                "distance_km": { "type": "number" },
+                "maps_url": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "justifications": {
+        "readOnlyHint": "Returns venue listings without writing any data.",
+        "openWorldHint": "Returns curated venue data stored in CoffeeDateNow — not a live web search.",
+        "destructiveHint": "Venue lookup is non-destructive.",
+        "idempotentHint": "Same location parameters yield the same venue list."
+      }
+    },
+    "propose_coffee_meetup": {
+      "description": "Send a structured coffee-meetup proposal to a match, including a suggested venue and time.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "match_id": { "type": "string", "description": "The match to invite." },
+          "venue_id": { "type": "string", "description": "ID of the proposed venue from list_public_venues." },
+          "proposed_time": { "type": "string", "format": "date-time", "description": "ISO 8601 proposed meeting time." },
+          "note": { "type": "string", "description": "Optional personal note to accompany the proposal.", "maxLength": 300 }
+        },
+        "required": ["match_id", "venue_id", "proposed_time"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "proposal_id": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending"] }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "justifications": {
+        "readOnlyHint": "Creates a new meetup proposal record.",
+        "openWorldHint": "Sends a proposal within the CoffeeDateNow platform only.",
+        "destructiveHint": "Proposing a meetup is non-destructive; the other party can decline.",
+        "idempotentHint": "Each call creates a distinct proposal."
+      }
+    },
+    "respond_to_meetup": {
+      "description": "Accept or decline an incoming coffee-meetup proposal from a match.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "proposal_id": { "type": "string", "description": "ID of the meetup proposal to respond to." },
+          "response": { "type": "string", "enum": ["accept", "decline"], "description": "Accept or decline the proposal." }
+        },
+        "required": ["proposal_id", "response"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "proposal_id": { "type": "string" },
+          "status": { "type": "string", "enum": ["accepted", "declined"] }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "justifications": {
+        "readOnlyHint": "Updates proposal status.",
+        "openWorldHint": "Operates within CoffeeDateNow only.",
+        "destructiveHint": "Declining a proposal does not delete data; it updates status.",
+        "idempotentHint": "Repeated responses may have different effects depending on current state."
+      }
+    },
+    "send_coordination_message": {
+      "description": "Send a short coordination message to a match (e.g., 'I'm on my way', 'Running 5 minutes late').",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "match_id": { "type": "string", "description": "The match to message." },
+          "message": { "type": "string", "description": "The message body.", "maxLength": 500 }
+        },
+        "required": ["match_id", "message"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "message_id": { "type": "string" },
+          "sent_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "justifications": {
+        "readOnlyHint": "Creates a new message record.",
+        "openWorldHint": "Delivers a message within CoffeeDateNow only.",
+        "destructiveHint": "Sending a message is non-destructive.",
+        "idempotentHint": "Each call sends a distinct message."
+      }
+    },
+    "block_user": {
+      "description": "Permanently block another user, preventing them from seeing or contacting the authenticated user. This action is irreversible from within the app.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile_id": { "type": "string", "description": "The profile ID of the user to block." },
+          "reason": { "type": "string", "description": "Optional reason for blocking.", "maxLength": 300 }
+        },
+        "required": ["profile_id"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "blocked": { "type": "boolean" },
+          "blocked_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "justifications": {
+        "readOnlyHint": "Creates a block record.",
+        "openWorldHint": "Block is enforced within CoffeeDateNow only.",
+        "destructiveHint": "Blocking permanently ends interaction with the blocked user and is irreversible from the app; marked destructive.",
+        "idempotentHint": "Re-blocking an already-blocked user may alter timestamps."
+      }
+    },
+    "report_user": {
+      "description": "Submit a safety report about another user for inappropriate behaviour, abuse, or policy violations. Triggers a moderation review.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile_id": { "type": "string", "description": "The profile ID of the user being reported." },
+          "reason": {
+            "type": "string",
+            "enum": ["harassment", "spam", "fake_profile", "underage", "inappropriate_content", "other"],
+            "description": "Category of the report."
+          },
+          "details": { "type": "string", "description": "Additional context for the moderation team.", "maxLength": 1000 }
+        },
+        "required": ["profile_id", "reason"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "report_id": { "type": "string" },
+          "submitted_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "justifications": {
+        "readOnlyHint": "Creates a moderation report record.",
+        "openWorldHint": "Report is filed within CoffeeDateNow moderation system only.",
+        "destructiveHint": "A confirmed report may result in account suspension; marked destructive.",
+        "idempotentHint": "Each call creates a distinct report ticket."
+      }
+    },
+    "unmatch": {
+      "description": "Remove an existing mutual match, ending the connection and deleting the shared conversation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "match_id": { "type": "string", "description": "The match ID to remove." }
+        },
+        "required": ["match_id"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "unmatched": { "type": "boolean" },
+          "unmatched_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "justifications": {
+        "readOnlyHint": "Deletes the match record and associated conversation.",
+        "openWorldHint": "Operates within CoffeeDateNow only.",
+        "destructiveHint": "Unmatching permanently deletes the shared conversation and cannot be undone; marked destructive.",
+        "idempotentHint": "Re-unmatching a removed match has no effect but the first call is irreversible."
+      }
+    }
+  },
+  "test_cases": [
+    {
+      "description": "User checks their own profile",
+      "user_prompt": "Show me my CoffeeDateNow profile.",
+      "file_attachment_urls": [],
+      "tools_triggered": ["get_my_profile"],
+      "expected_output": "Returns the authenticated user's display name, bio, age, and current availability status.",
+      "expected_output_url": ""
+    },
+    {
+      "description": "User marks themselves available for coffee",
+      "user_prompt": "I'm free for coffee for the next 45 minutes.",
+      "file_attachment_urls": [],
+      "tools_triggered": ["set_coffee_availability"],
+      "expected_output": "Confirms the user is now available and shows the expiry time approximately 45 minutes from now.",
+      "expected_output_url": ""
+    },
+    {
+      "description": "User discovers nearby available matches",
+      "user_prompt": "Who's nearby and available for coffee right now?",
+      "file_attachment_urls": [],
+      "tools_triggered": ["set_coffee_availability", "discover_coffee_dates"],
+      "expected_output": "Lists available adults within the default radius with their display names and distances.",
+      "expected_output_url": ""
+    },
+    {
+      "description": "User proposes a coffee meetup with a venue",
+      "user_prompt": "Ask my match Alex if they want to meet at the nearest café in 20 minutes.",
+      "file_attachment_urls": [],
+      "tools_triggered": ["list_matches", "list_public_venues", "propose_coffee_meetup"],
+      "expected_output": "Sends a meetup proposal to Alex with the closest venue and the suggested time, and confirms the proposal is pending.",
+      "expected_output_url": ""
+    },
+    {
+      "description": "User sends a coordination message to a match",
+      "user_prompt": "Tell my match I'm running 5 minutes late.",
+      "file_attachment_urls": [],
+      "tools_triggered": ["list_matches", "send_coordination_message"],
+      "expected_output": "Delivers the coordination message to the matched user and confirms the sent timestamp.",
+      "expected_output_url": ""
+    },
+    {
+      "description": "User blocks another user after an uncomfortable interaction",
+      "user_prompt": "Block the user who just messaged me inappropriately.",
+      "file_attachment_urls": [],
+      "tools_triggered": ["list_messages", "block_user"],
+      "expected_output": "Confirms the user is blocked and will no longer be visible or able to contact the authenticated user.",
+      "expected_output_url": ""
+    },
+    {
+      "description": "User reports a profile for suspected fake account",
+      "user_prompt": "Report profile ID abc123 — I think it's a fake account.",
+      "file_attachment_urls": [],
+      "tools_triggered": ["report_user"],
+      "expected_output": "Submits a fake_profile report and returns a report ID confirming it is under moderation review.",
+      "expected_output_url": ""
+    }
+  ],
+  "negative_test_cases": [
+    {
+      "description": "User asks to create a new CoffeeDateNow account through ChatGPT",
+      "user_prompt": "Sign me up for CoffeeDateNow.",
+      "expected_output": "The assistant explains that account creation must be done at coffeedatenow.com and cannot be completed via ChatGPT.",
+      "tools_triggered": []
+    },
+    {
+      "description": "User requests access to another user's private messages without a match",
+      "user_prompt": "Show me the messages between two other users.",
+      "expected_output": "The assistant declines, explaining it can only retrieve messages from the authenticated user's own conversations.",
+      "tools_triggered": []
+    },
+    {
+      "description": "Unauthenticated request to discover matches",
+      "user_prompt": "Show me who is available for coffee without logging in.",
+      "expected_output": "The assistant explains that authentication is required and prompts the user to connect their CoffeeDateNow account.",
+      "tools_triggered": []
+    }
+  ]
+}
